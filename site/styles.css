@@ -1,0 +1,225 @@
+/* === Reset and Fonts === */
+body {
+  margin: 0;
+  font-family: 'Inter', sans-serif;
+  background: linear-gradient(135deg, #121212, #1f1f1f);
+  color: white;
+  overflow-x: hidden;
+}
+
+/* === Glassmorphism Cards === */
+.glass {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 20px;
+  padding: 2rem;
+  backdrop-filter: blur(10px);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  margin: 2rem;
+}
+
+/* === Nav === */
+nav {
+  display: flex;
+  justify-content: center;
+  gap: 1.5rem;
+  padding: 1rem;
+  position: sticky;
+  top: 0;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(5px);
+  z-index: 1000;
+}
+
+nav a {
+  color: white;
+  text-decoration: none;
+  font-weight: 600;
+  transition: color 0.3s ease;
+}
+nav a:hover {
+  color: #00aaff;
+}
+
+/* === Hero Section === */
+.hero-section {
+  text-align: center;
+  padding: 4rem 2rem;
+}
+.hero-section h1 {
+  font-size: 3rem;
+  margin-bottom: 1rem;
+}
+.typing {
+  font-size: 1.25rem;
+  opacity: 0.8;
+}
+
+/* === Toggle Buttons === */
+#themeToggle {
+  margin-top: 1.5rem;
+  padding: 0.5rem 1rem;
+  border: none;
+  border-radius: 999px;
+  background: #00aaff;
+  color: white;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(0, 170, 255, 0.5);
+}
+#themeToggle:hover {
+  background: #008ecc;
+}
+
+
+
+
+/* === Slideshow & Tabs === */
+.slideshow {
+  position: relative;
+  max-width: 600px;
+  margin: 2rem auto;
+}
+.slide {
+  display: none;
+  width: 100%;
+  border-radius: 12px;
+}
+.slide.active {
+  display: block;
+}
+#prevBtn, #nextBtn {
+  position: absolute;
+  top: 50%;
+  font-size: 2rem;
+  background: rgba(0, 0, 0, 0.4);
+  border: none;
+  color: white;
+  padding: 0.5rem;
+  cursor: pointer;
+  transform: translateY(-50%);
+}
+#prevBtn { left: 0; }
+#nextBtn { right: 0; }
+
+/* === Tabs === */
+.tabs {
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+.tab-btn {
+  background: #333;
+  color: white;
+  padding: 0.5rem 1rem;
+  border: none;
+  border-radius: 999px;
+  cursor: pointer;
+}
+.tab-btn.active {
+  background: #00aaff;
+}
+.tab-content {
+  display: none;
+}
+.tab-content.active {
+  display: block;
+}
+
+/* === Contact Form === */
+form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+input, textarea {
+  padding: 0.75rem;
+  border: none;
+  border-radius: 10px;
+  background: #2a2a2a;
+  color: white;
+}
+button[type="submit"] {
+  padding: 0.75rem;
+  border: none;
+  border-radius: 10px;
+  background: #00aaff;
+  color: white;
+  font-weight: bold;
+  cursor: pointer;
+}
+button[type="submit"]:hover {
+  background: #008ecc;
+}
+
+/* === Footer === */
+footer {
+  text-align: center;
+  padding: 2rem;
+  font-size: 0.9rem;
+  opacity: 0.6;
+}
+
+/* === Fade In Animation === */
+.fade-in {
+  opacity: 0;
+  transform: translateY(20px);
+  transition: all 0.6s ease-out;
+}
+.fade-in.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* === Light Mode Toggle === */
+body.light-mode {
+  background: linear-gradient(135deg, #f0f0f0, #ffffff);
+  color: #111;
+}
+body.light-mode nav,
+body.light-mode .glass {
+  background: rgba(255, 255, 255, 0.7);
+  color: #000;
+}
+/* Screenshot Grid Modern Layout */
+.screenshot-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 1.5rem;
+  margin-top: 2rem;
+}
+
+.screenshot-card {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.screenshot-card:hover {
+  transform: scale(1.03);
+  box-shadow: 0 6px 30px rgba(0, 170, 255, 0.4);
+}
+
+.screenshot-card img {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+/* === Music Toggle Button === */
+#musicToggle {
+  position: fixed;
+  bottom: 25px;
+  right: 25px;
+  background: #202020;
+  color: white;
+  border: none;
+  border-radius: 50%;
+  width: 50px;
+  height: 50px;
+  font-size: 20px;
+  cursor: pointer;
+  z-index: 9999; /* Makes sure it's above everything */
+  box-shadow: 0 0 12px rgba(0, 170, 255, 0.6);
+  transition: background 0.3s;
+}
