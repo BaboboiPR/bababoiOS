@@ -140,7 +140,7 @@ class MiniCMD(tk.Tk):
         elif command == "calculator":
             try:
                 import calculator
-                calculator.run(self)
+                calculator.run(self, preset=self.colors)
             except Exception as e:
                 self.print_text(f"Failed to launch calculator: {e}\n", 'error')
                 traceback.print_exc()
