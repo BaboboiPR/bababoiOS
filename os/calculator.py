@@ -1,6 +1,8 @@
 import tkinter as tk
 import time
 
+# SHOULD MAKE IT BETTER!!!
+
 class AnimatedButton(tk.Button):
     def __init__(self, master=None, **kw):
         tk.Button.__init__(self, master=master, **kw)

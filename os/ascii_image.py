@@ -10,7 +10,8 @@ ASCII_CHARS = "@%#*+=-:. "
 def runarg(app=None, args=None):
     script_dir = os.path.dirname(os.path.abspath(__file__))
 
-    # Require exactly 2 arguments: input image filename and output text filename
+    # Require 2 arguments: input image filename and output text filename
+    # MUST BE IN SAME DIRECTORY AS THE SCRIPT!!!
     if not args or len(args) < 2:
         error_msg = "Usage: image_to_ascii.py <input_image_name> <output_file_name.txt>\n"
         app.print_text(error_msg, 'error')

@@ -6,7 +6,7 @@ import sys
 import platform
 import psutil
 import traceback
-import taskmanager  # ensure taskmanager.py is in the same folder
+import taskmanager # make sure taskmanager.py is in same directory as this script
 
 def load_commands():
     cmds = {}
