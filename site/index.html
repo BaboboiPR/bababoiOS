@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>BababoiOS Presentation</title>
+  <link rel="stylesheet" href="styles.css" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet" />
+</head>
+<body>
+
+  <audio id="bgMusic" src="lofiaddmusic.mp3" autoplay loop></audio>
+
+<button id="musicToggle" aria-label="Toggle Music" title="Toggle Music">🔊</button>
+
+
+  <nav class="glass">
+    <a href="#features">Features</a>
+    <a href="#screenshot">Screenshot</a>
+    <a href="#more-info">More Info</a>
+    <a href="#contact">Contact</a>
+  </nav>
+
+  <header id="home" class="hero-section">
+    <h1>BababoiOS</h1>
+    <p class="typing"></p>
+    <button id="themeToggle">🌙 Toggle Theme</button>
+  </header>
+
+  <section id="features" class="features fade-in glass">
+    <h2>Features</h2>
+    <ul>
+      <li>🎥 MP4 to ASCII converter.</li>
+      <li>🖼️ PNG to ASCII converter.</li>
+      <li>🔧 Describe your third feature.</li>
+      <li>✨ Optional extra feature.</li>
+    </ul>
+  </section>
+
+  <section id="screenshot" class="screenshot fade-in glass">
+  <h2>See BababoiOS in Action</h2>
+  <div class="screenshot-grid">
+    <div class="screenshot-card">
+      <img src="2.png" alt="Screenshot 1" />
+    </div>
+    <div class="screenshot-card">
+      <img src="3.png" alt="Screenshot 2" />
+    </div>
+    <div class="screenshot-card">
+      <img src="4.png" alt="Screenshot 3" />
+    </div>
+  </div>
+</section>
+
+
+  <section id="more-info" class="fade-in glass">
+    <h2>More Info</h2>
+    <div class="tabs">
+      <button class="tab-btn active" data-tab="tab1">About</button>
+      <button class="tab-btn" data-tab="tab2">Specs</button>
+      <button class="tab-btn" data-tab="tab3">Support</button>
+    </div>
+    <div class="tab-content active" id="tab1">
+      <p>About BababoiOS: A fast, secure, and highly customizable OS for power users.</p>
+    </div>
+    <div class="tab-content" id="tab2">
+      <p>Specs: 64-bit architecture, multi-core support, built-in security modules.</p>
+    </div>
+    <div class="tab-content" id="tab3">
+      <p>Support: Available 24/7 via email or chat.</p>
+    </div>
+  </section>
+
+  <section id="contact" class="fade-in glass">
+    <h2>Contact Us</h2>
+    <form id="contactForm">
+      <input type="text" name="name" placeholder="Your Name" required />
+      <input type="email" name="email" placeholder="Your Email" required />
+      <textarea name="message" placeholder="Your Message" required></textarea>
+      <button type="submit">Send</button>
+    </form>
+    <div id="formMsg"></div>
+  </section>
+
+  <footer class="fade-in">
+  <p>Made with ❤️ for fun and educational purposes. BababoiOS is not an official product.</p>
+  </footer>
+  <script src="script.js"></script>
+</body>
+</html>
