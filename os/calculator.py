@@ -1,16 +1,13 @@
 import tkinter as tk
 import time
 
-# SHOULD MAKE IT BETTER!!!
-
 class AnimatedButton(tk.Button):
-    def __init__(self, master=None, **kw):
-        tk.Button.__init__(self, master=master, **kw)
+    def __init__(self, master=None, hover_bg=None, press_bg=None, **kw):
+        self.hover_bg = hover_bg or '#4a90e2'
+        self.press_bg = press_bg or '#1c5dbf'
         self.default_bg = kw.get('bg', '#333')
-        self.hover_bg = '#4a90e2'
-        self.press_bg = '#1c5dbf'
         self.default_fg = kw.get('fg', 'white')
-
+        super().__init__(master=master, **kw)
         self.bind("<Enter>", self.on_enter)
         self.bind("<Leave>", self.on_leave)
         self.bind("<ButtonPress-1>", self.on_press)
@@ -18,37 +15,44 @@ class AnimatedButton(tk.Button):
 
     def on_enter(self, e):
         self.config(bg=self.hover_bg)
-
     def on_leave(self, e):
         self.config(bg=self.default_bg)
-
     def on_press(self, e):
         self.config(bg=self.press_bg)
-
     def on_release(self, e):
         self.config(bg=self.hover_bg)
 
-def run(app=None, args=None):
-    calc = tk.Toplevel() if app else tk.Tk()
+def run(app, preset=None):
+    if app is None:
+        raise ValueError("You must pass the main Tk root window as 'app'")
+
+    colors = preset or {
+        'background': '#222',
+        'button_bg': '#333',
+        'button_fg': 'white',
+        'button_hover_bg': '#4a90e2',
+        'button_active_bg': '#1c5dbf',
+        'entry_font': ('Segoe UI', 28),
+        'font': ('Segoe UI', 24, 'bold')
+    }
+
+    calc = tk.Toplevel(app)
     calc.title("Calculator")
     calc.geometry("350x500")
-    calc.configure(bg='#222')
+    calc.configure(bg=colors['background'])
     calc.resizable(False, False)
 
     expression = ""
     last_operator = False
-    last_pressed = None
-    press_delay = 1.0  # seconds initial delay
+    press_delay = 1.0
     last_press_time = {}
 
     operators = set("+-*/")
 
     def can_press_number(num):
-        # Implements delay on pressing the same number consecutively
         now = time.time()
         if num in last_press_time:
             diff = now - last_press_time[num]
-            # delay increases by 1 second per repeated press
             if diff < press_delay * (last_press_time.get(f"count_{num}", 1)):
                 return False
             last_press_time[f"count_{num}"] = last_press_time.get(f"count_{num}", 1) + 1
@@ -59,24 +63,19 @@ def run(app=None, args=None):
 
     def press(char):
         nonlocal expression, last_operator
-
         if char in operators:
-            # Prevent two consecutive operators
             if not expression or last_operator:
                 return
             expression += char
             last_operator = True
-            # Reset number press count on operator press
             for key in list(last_press_time):
                 if key.startswith("count_"):
                     last_press_time[key] = 1
         else:
-            # char is a number or dot
             if not can_press_number(char):
                 return
             expression += char
             last_operator = False
-
         equation.set(expression)
 
     def equalpress():
@@ -86,7 +85,6 @@ def run(app=None, args=None):
             equation.set(total)
             expression = total
             last_operator = False
-            # Reset delays
             last_press_time.clear()
         except Exception:
             equation.set("Error")
@@ -103,10 +101,18 @@ def run(app=None, args=None):
 
     equation = tk.StringVar()
     expression_field = tk.Entry(
-        calc, textvariable=equation, font=('Segoe UI', 28), bd=0,
-        relief='flat', justify='right', state='readonly', readonlybackground='#222', fg='white', insertbackground='white'
+        calc,
+        textvariable=equation,
+        font=colors['entry_font'],
+        bd=0,
+        relief='flat',
+        justify='right',
+        state='readonly',
+        readonlybackground=colors['background'],
+        fg=colors['button_fg'],
+        insertbackground=colors['button_fg']
     )
-    expression_field.grid(row=0, column=0, columnspan=4, sticky="nsew", padx=20, pady=(20,10), ipady=20)
+    expression_field.grid(row=0, column=0, columnspan=4, sticky="nsew", padx=20, pady=(20, 10), ipady=20)
 
     buttons = [
         ('7', 1, 0), ('8', 1, 1), ('9', 1, 2), ('/', 1, 3),
@@ -128,11 +134,13 @@ def run(app=None, args=None):
             calc,
             text=text,
             command=cmd,
-            font=('Segoe UI', 24, 'bold'),
-            bg='#333',
-            fg='white',
-            activeforeground='white',
-            activebackground='#1c5dbf',
+            font=colors['font'],
+            bg=colors['button_bg'],
+            fg=colors['button_fg'],
+            hover_bg=colors['button_hover_bg'],
+            press_bg=colors['button_active_bg'],
+            activeforeground=colors['button_fg'],
+            activebackground=colors['button_active_bg'],
             relief='flat',
             cursor='hand2',
             bd=0,
@@ -147,5 +155,4 @@ def run(app=None, args=None):
     for i in range(4):
         calc.grid_columnconfigure(i, weight=1)
 
-    if not app:
-        calc.mainloop()
+    # DO NOT call mainloop here!
