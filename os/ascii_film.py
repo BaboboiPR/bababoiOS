@@ -5,6 +5,7 @@ import taichi as ti
 import traceback
 import os
 import time
+from pathlib import Path
 
 # Initialize Taichi
 ti.init(arch=ti.opengl)
@@ -180,14 +181,19 @@ def runarg(app, args=None):
     if not args or len(args) < 2:
         app.print_text("Usage: /ascii_film <input_video_path> <output_video_path>\n", 'info')
         return
-
+    
     input_path = args[0]
     output_path = args[1]
+
+    # Determine the directory of this script
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    input_path = os.path.join(script_dir, input_path)
+    output_path = os.path.join(script_dir, output_path)
 
     app.print_text(f"Converting video '{input_path}' to ASCII and saving as '{output_path}'...\n", 'info')
 
     try:
-        video_to_ascii_gpu_cached(app, input_path, output_path)
+        video_to_ascii_gpu_cached(app, str(input_path), str(output_path))
         app.print_text("Conversion completed successfully!\n", 'info')
     except Exception as e:
         tb = traceback.format_exc()
