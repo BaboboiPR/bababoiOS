@@ -44,7 +44,7 @@ def run(app, preset=None):
 
     expression = ""
     last_operator = False
-    press_delay = 1.0
+    press_delay = 0.1
     last_press_time = {}
 
     operators = set("+-*/")
