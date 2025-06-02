@@ -15,4 +15,4 @@ def runarg(app, args):
     else:
         with open(input_dir, "r", encoding="utf-8") as f:
             text = f.read()
-            app.print_text(text)
+            app.print_text(str(text) + '\n')

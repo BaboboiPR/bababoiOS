@@ -7,6 +7,32 @@ import platform
 import psutil
 import traceback
 import taskmanager # make sure taskmanager.py is in same directory as this script
+import threading
+import pygame
+
+pygame.mixer.init()
+
+def ding():
+    def _play():
+        try:
+            script_dir = os.path.dirname(os.path.abspath(__file__))
+            sounds_dir = os.path.join(script_dir, 'sounds/ding.mp3')
+            pygame.mixer.music.load(sounds_dir)
+            pygame.mixer.music.play()
+        except Exception as e:
+            print(f"Error playing sound: {e}")
+    threading.Thread(target=_play).start()
+
+def nuh_uh():
+    def _play():
+        try:
+            script_dir = os.path.dirname(os.path.abspath(__file__))
+            sounds_dir = os.path.join(script_dir, 'sounds/nuh_uh.mp3')
+            pygame.mixer.music.load(sounds_dir)
+            pygame.mixer.music.play()
+        except Exception as e:
+            print(f"Error playing sound: {e}")
+    threading.Thread(target=_play).start()
 
 def load_commands():
     cmds = {}
@@ -92,7 +118,6 @@ class MiniCMD(tk.Tk):
 
         self.print_text(f"Switched to preset '{preset_name}'.\n", 'info')
 
-
     def show_info(self):
         uname = platform.uname()
         information = [
@@ -125,6 +150,7 @@ class MiniCMD(tk.Tk):
 
         if not cmd.startswith(config.COMMAND_PREFIX):
             self.print_text(f"Use prefix '{config.COMMAND_PREFIX}'\n", 'error')
+            nuh_uh()
             return
 
         parts = cmd[len(config.COMMAND_PREFIX):].split()
@@ -167,6 +193,7 @@ class MiniCMD(tk.Tk):
             self.run_script(command, args)
         else:
             self.print_text(f"Unknown command: {command}\n", 'error')
+            nuh_uh()
 
     def run_script(self, command, args):
         module_name = commands.get(command.lower())
@@ -178,15 +205,20 @@ class MiniCMD(tk.Tk):
             module = importlib.import_module(module_name)
             if hasattr(module, 'runarg'):
                 module.runarg(self, args)
+                ding()
             elif hasattr(module, 'run'):
                 module.run(self)
+                ding()
             else:
                 self.print_text(f"No `run()` or `runarg()` in '{module_name}'.\n", 'error')
+                nuh_uh()
         except ImportError as e:
             self.print_text(f"Import error: {e}\n", 'error')
+            nuh_uh()
         except Exception as e:
             self.print_text(f"Error running command '{module_name}': {e}\n", 'error')
             traceback.print_exc()
+            nuh_uh()
 
 if __name__ == "__main__":
     try:
