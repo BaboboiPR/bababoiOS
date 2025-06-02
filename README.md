@@ -30,8 +30,6 @@ Credits:
 
 -sounds - Patei500
 
-
-
 If you would (somehow) like to contact us, here's our discords:
 
 -qkba -> @qkba
