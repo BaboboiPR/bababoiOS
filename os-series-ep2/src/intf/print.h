@@ -3,30 +3,48 @@
 #include <stdint.h>
 #include <stddef.h>
 
+static inline int abs(int x) {
+    return x < 0 ? -x : x;
+}
+
+#define PI 3.14159265358979323846f
+
+
+// Sine approximation
+static float sinf(float x) {
+    while (x > PI) x -= 2 * PI;
+    while (x < -PI) x += 2 * PI;
+    float x3 = x * x * x;
+    return x - (x3 / 6.0f);
+}
+
+static float cosf(float x) {
+    return sinf(x + PI / 2);
+}
+
 enum {
     PRINT_COLOR_BLACK = 0,
-	PRINT_COLOR_BLUE = 1,
-	PRINT_COLOR_GREEN = 2,
-	PRINT_COLOR_CYAN = 3,
-	PRINT_COLOR_RED = 4,
-	PRINT_COLOR_MAGENTA = 5,
-	PRINT_COLOR_BROWN = 6,
-	PRINT_COLOR_LIGHT_GRAY = 7,
-	PRINT_COLOR_DARK_GRAY = 8,
-	PRINT_COLOR_LIGHT_BLUE = 9,
-	PRINT_COLOR_LIGHT_GREEN = 10,
-	PRINT_COLOR_LIGHT_CYAN = 11,
-	PRINT_COLOR_LIGHT_RED = 12,
-	PRINT_COLOR_PINK = 13,
-	PRINT_COLOR_YELLOW = 14,
-	PRINT_COLOR_WHITE = 15,
+    PRINT_COLOR_BLUE,
+    PRINT_COLOR_GREEN,
+    PRINT_COLOR_CYAN,
+    PRINT_COLOR_RED,
+    PRINT_COLOR_MAGENTA,
+    PRINT_COLOR_BROWN,
+    PRINT_COLOR_LIGHT_GRAY,
+    PRINT_COLOR_DARK_GRAY,
+    PRINT_COLOR_LIGHT_BLUE,
+    PRINT_COLOR_LIGHT_GREEN,
+    PRINT_COLOR_LIGHT_CYAN,
+    PRINT_COLOR_LIGHT_RED,
+    PRINT_COLOR_PINK,
+    PRINT_COLOR_YELLOW,
+    PRINT_COLOR_WHITE,
 };
 
 void print_clear();
 void print_char(char character);
-void print_str(char* string);
 void print_set_color(uint8_t foreground, uint8_t background);
-// src/intf/io.h
 void puts(const char* str);
 void putchar(char c);
 void print_backspace();
+

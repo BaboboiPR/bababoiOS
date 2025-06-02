@@ -1,1 +1,1 @@
-
+chinese for normal person
