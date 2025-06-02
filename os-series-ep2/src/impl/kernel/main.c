@@ -2,25 +2,15 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-static inline int abs(int x) {
-    return x < 0 ? -x : x;
-}
-
-// VGA ports for mode setting
-#define VGA_MISC_WRITE 0x3C2
-#define VGA_SEQ_INDEX 0x3C4
-#define VGA_SEQ_DATA 0x3C5
-#define VGA_CRTC_INDEX 0x3D4
-#define VGA_CRTC_DATA 0x3D5
-#define VGA_GC_INDEX 0x3CE
-#define VGA_GC_DATA 0x3CF
-#define VGA_AC_INDEX 0x3C0
-#define VGA_AC_WRITE 0x3C0
-#define VGA_INSTAT_READ 0x3DA
-
 #define INPUT_BUF_SIZE 256
 #define VGA_WIDTH 320
 #define VGA_HEIGHT 200
+
+static uint8_t *vga_buffer = (uint8_t *)0xA0000;
+
+static inline int abs(int x) {
+    return x < 0 ? -x : x;
+}
 
 static inline void outb(uint16_t port, uint8_t val) {
     asm volatile ("outb %0, %1" : : "a"(val), "Nd"(port));
@@ -32,130 +22,66 @@ static inline uint8_t inb(uint16_t port) {
     return ret;
 }
 
-// Set a simple grayscale palette (256 colors)
+// VGA palette
 void vga_set_palette() {
-    outb(0x3C8, 0); // Start at palette index 0
+    outb(0x3C8, 0);
     for (int i = 0; i < 256; i++) {
-        uint8_t val = i * 63 / 255;  // scale 0..255 to 0..63 for VGA DAC
-        outb(0x3C9, val); // Red
-        outb(0x3C9, val); // Green
-        outb(0x3C9, val); // Blue
+        uint8_t val = i * 63 / 255;
+        outb(0x3C9, val);
+        outb(0x3C9, val);
+        outb(0x3C9, val);
     }
 }
 
-// VGA buffer pointer for mode 13h
-static uint8_t *vga_buffer = (uint8_t *)0xA0000;
-
-// Set VGA mode 13h (320x200, 256 colors) via port programming
+// VGA mode 13h (320x200, 256 colors)
 void vga_set_mode_13h() {
-    // Misc Output
-    outb(VGA_MISC_WRITE, 0x63);
-
-    // Sequencer Registers
-    uint8_t seq_regs[5] = {0x03, 0x01, 0x0F, 0x00, 0x0E};
+    outb(0x3C2, 0x63);
+    uint8_t seq[5] = {0x03, 0x01, 0x0F, 0x00, 0x0E};
     for (int i = 0; i < 5; i++) {
-        outb(VGA_SEQ_INDEX, i);
-        outb(VGA_SEQ_DATA, seq_regs[i]);
+        outb(0x3C4, i);
+        outb(0x3C5, seq[i]);
     }
 
-    // Unlock CRTC Registers 0-7
-    outb(VGA_CRTC_INDEX, 0x03);
-    outb(VGA_CRTC_DATA, inb(VGA_CRTC_DATA) | 0x80);
-    outb(VGA_CRTC_INDEX, 0x11);
-    outb(VGA_CRTC_DATA, inb(VGA_CRTC_DATA) & ~0x80);
+    outb(0x3D4, 0x03); outb(0x3D5, inb(0x3D5) | 0x80);
+    outb(0x3D4, 0x11); outb(0x3D5, inb(0x3D5) & ~0x80);
 
-    // CRT Controller Registers (25)
-    uint8_t crtc_regs[25] = {
-        0x5F, 0x4F, 0x50, 0x82, 0x54, 0x80, 0xBF, 0x1F,
-        0x00, 0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x9C,
-        0x0E, 0x8F, 0x28, 0x40, 0x96, 0xB9, 0xA3, 0xFF,
+    uint8_t crtc[25] = {
+        0x5F,0x4F,0x50,0x82,0x54,0x80,0xBF,0x1F,
+        0x00,0x41,0x00,0x00,0x00,0x00,0x00,0x9C,
+        0x0E,0x8F,0x28,0x40,0x96,0xB9,0xA3,0xFF,
         0x00
     };
     for (int i = 0; i < 25; i++) {
-        outb(VGA_CRTC_INDEX, i);
-        outb(VGA_CRTC_DATA, crtc_regs[i]);
+        outb(0x3D4, i);
+        outb(0x3D5, crtc[i]);
     }
 
-    // Graphics Controller Registers (9)
-    uint8_t gc_regs[9] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x40, 0x05, 0x0F, 0xFF};
+    uint8_t gc[9] = {0x00,0x00,0x00,0x00,0x00,0x40,0x05,0x0F,0xFF};
     for (int i = 0; i < 9; i++) {
-        outb(VGA_GC_INDEX, i);
-        outb(VGA_GC_DATA, gc_regs[i]);
+        outb(0x3CE, i);
+        outb(0x3CF, gc[i]);
     }
 
-    // Attribute Controller Registers (21)
-    uint8_t ac_regs[21] = {
-        0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
-        0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F,
-        0x41, 0x00, 0x0F, 0x00, 0x00
+    uint8_t ac[21] = {
+        0x00,0x01,0x02,0x03,0x04,0x05,0x06,0x07,
+        0x08,0x09,0x0A,0x0B,0x0C,0x0D,0x0E,0x0F,
+        0x41,0x00,0x0F,0x00,0x00
     };
-
-    (void)inb(VGA_INSTAT_READ); // reset flip-flop
-
+    (void)inb(0x3DA);
     for (int i = 0; i < 21; i++) {
-        outb(VGA_AC_INDEX, i);
-        outb(VGA_AC_WRITE, ac_regs[i]);
+        outb(0x3C0, i);
+        outb(0x3C0, ac[i]);
     }
-
-    outb(VGA_AC_INDEX, 0x20); // enable video output
+    outb(0x3C0, 0x20);
 }
 
-// Clear the VGA screen with a given color
 void vga_clear_screen(uint8_t color) {
     for (int i = 0; i < VGA_WIDTH * VGA_HEIGHT; i++) {
         vga_buffer[i] = color;
     }
 }
 
-
-// Bresenham's line drawing algorithm
-void draw_line(int x0, int y0, int x1, int y1, uint8_t color) {
-    int dx = abs(x1 - x0);
-    int dy = abs(y1 - y0);
-    int sx = (x0 < x1) ? 1 : -1;
-    int sy = (y0 < y1) ? 1 : -1;
-    int err = dx - dy;
-    int e2;
-
-    while (true) {
-        if (x0 >= 0 && x0 < VGA_WIDTH && y0 >= 0 && y0 < VGA_HEIGHT)
-            vga_buffer[y0 * VGA_WIDTH + x0] = color;
-
-        if (x0 == x1 && y0 == y1) break;
-
-        e2 = 2 * err;
-        if (e2 > -dy) {
-            err -= dy;
-            x0 += sx;
-        }
-        if (e2 < dx) {
-            err += dx;
-            y0 += sy;
-        }
-    }
-}
-
-// Draw a simple cube wireframe in 2D screen space
-void draw_simple_cube() {
-    int cube_points[8][2] = {
-        {120, 70},   {200, 70},   {200, 130},  {120, 130},
-        {140, 90},   {220, 90},   {220, 150},  {140, 150}
-    };
-
-    int edges[12][2] = {
-        {0,1},{1,2},{2,3},{3,0},
-        {4,5},{5,6},{6,7},{7,4},
-        {0,4},{1,5},{2,6},{3,7}
-    };
-
-    for (int i = 0; i < 12; i++) {
-        int p1 = edges[i][0];
-        int p2 = edges[i][1];
-        draw_line(cube_points[p1][0], cube_points[p1][1], cube_points[p2][0], cube_points[p2][1], 4);
-    }
-}
-
-// Stub functions for printing and keyboard input (replace with your own implementations)
+// External stub functions
 extern void puts(const char* str);
 extern void putchar(char c);
 extern char keyboard_getchar(void);
@@ -182,13 +108,31 @@ void print_help() {
     puts("  /restart      - Restart the machine");
     puts("  /gfxmode      - Switch to VGA 320x200 mode");
     puts("  /gfxclear     - Clear graphics screen");
-    puts("  /cube         - Draw a simple red cube wireframe");
+    puts("  /calc <expr>  - Evaluate math (e.g., 3+4, 10-5, 6*7, 20/4)");
+}
+
+int eval_expr(const char* expr) {
+    int a = 0, b = 0;
+    char op = 0;
+    while (*expr == ' ') expr++;
+    while (*expr >= '0' && *expr <= '9') a = a * 10 + (*expr++ - '0');
+    while (*expr == ' ') expr++;
+    op = *expr++;
+    while (*expr == ' ') expr++;
+    while (*expr >= '0' && *expr <= '9') b = b * 10 + (*expr++ - '0');
+
+    switch (op) {
+        case '+': return a + b;
+        case '-': return a - b;
+        case '*': return a * b;
+        case '/': return (b != 0) ? a / b : 0;
+        default:  return 0;
+    }
 }
 
 void command_line_loop() {
     char input_buffer[INPUT_BUF_SIZE];
     size_t input_len = 0;
-
     bool vga_mode_active = false;
 
     puts("Welcome to mini-kernel CLI!");
@@ -199,7 +143,7 @@ void command_line_loop() {
     puts("Type `/shutdown` or `/restart` for power control.");
     puts("Type `/gfxmode` to enter VGA 320x200 graphics mode.");
     puts("Type `/gfxclear` to clear graphics screen.");
-    puts("Type `/cube` to draw a simple red cube wireframe.");
+    puts("Type `/calc 3+4` for calculator.");
     puts("Press Enter to run.\n");
     print_str("> ");
 
@@ -239,15 +183,32 @@ void command_line_loop() {
                 } else {
                     puts("Graphics mode not active.");
                 }
-            } else if (strncmp(input_buffer, "/cube", 5) == 0) {
-                if (!vga_mode_active) {
-                    vga_set_mode_13h();
-                    vga_set_palette();
-                    vga_clear_screen(0);
-                    vga_mode_active = true;
+            } else if (strncmp(input_buffer, "/calc ", 6) == 0) {
+                int result = eval_expr(input_buffer + 6);
+                char output[32];
+                int len = 0;
+                bool negative = false;
+
+                if (result < 0) {
+                    negative = true;
+                    result = -result;
                 }
-                draw_simple_cube();
-                puts("Drew simple cube wireframe in VGA mode.");
+
+                do {
+                    output[len++] = '0' + (result % 10);
+                    result /= 10;
+                } while (result > 0);
+
+                if (negative) output[len++] = '-';
+
+                for (int i = 0; i < len / 2; i++) {
+                    char tmp = output[i];
+                    output[i] = output[len - 1 - i];
+                    output[len - 1 - i] = tmp;
+                }
+
+                output[len] = '\0';
+                puts(output);
             } else {
                 puts("Unknown command.");
             }
