@@ -167,9 +167,11 @@ class MiniCMD(tk.Tk):
             try:
                 import calculator
                 calculator.run(self, preset=self.colors)
+                ding()
             except Exception as e:
                 self.print_text(f"Failed to launch calculator: {e}\n", 'error')
                 traceback.print_exc()
+                nuh_uh()
         elif command == "help":
             cmds_list = list(commands.keys()) + \
                         ["info"] + \
@@ -177,20 +179,27 @@ class MiniCMD(tk.Tk):
                         ["help", "exit"]
 
             self.print_text("Available commands:\n" + "\n".join(sorted(cmds_list)) + "\n")
+            ding()
         elif command == "info":
             self.show_info()
+            ding()
         elif command == "preset" and len(args) == 1:
             self.apply_preset(args[0])
+            ding()
         elif command == "clear":
             self.clear_output()
+            ding()
         elif command == "taskmanager":
             try:
                 taskmanager.TaskManager(self, self.colors)
+                ding()
             except Exception as e:
                 self.print_text(f"Error launching taskmanager: {e}\n", 'error')
                 traceback.print_exc()
+                nuh_uh()
         elif command in commands:
             self.run_script(command, args)
+            # here was supposed to be a ding() function tho if the script errors inside itself the ding will play but the error will appear so idk ill put the sounds inside the scripts and only the necessary ones will be in this launcher.py
         else:
             self.print_text(f"Unknown command: {command}\n", 'error')
             nuh_uh()
@@ -199,16 +208,17 @@ class MiniCMD(tk.Tk):
         module_name = commands.get(command.lower())
         if not module_name:
             self.print_text(f"Command '{command}' not found.\n", 'error')
+            nuh_uh()
             return
 
         try:
             module = importlib.import_module(module_name)
             if hasattr(module, 'runarg'):
                 module.runarg(self, args)
-                ding()
+                # again here
             elif hasattr(module, 'run'):
                 module.run(self)
-                ding()
+                # and again here aswell
             else:
                 self.print_text(f"No `run()` or `runarg()` in '{module_name}'.\n", 'error')
                 nuh_uh()
@@ -227,4 +237,5 @@ if __name__ == "__main__":
     except Exception as e:
         print("Unhandled exception:", e)
         traceback.print_exc()
+        nuh_uh()
     input("Press Enter to exit...")

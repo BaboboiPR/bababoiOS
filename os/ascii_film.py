@@ -1,20 +1,40 @@
-import cv2
+import cv2, traceback, os, time, pygame, threading
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 import taichi as ti
-import traceback
-import os
-import time
-from pathlib import Path
 
-# Initialize Taichi early and only once
-# You can switch 'opengl' to 'cuda' if your GPU supports it for better performance
-ti.init(arch=ti.opengl, fast_math=True)
+# Initialize Taichi early and ONLY once
+# probably should make an option to choose between different settings here and for users to test which has the best performance
+ti.init(arch=ti.opengl, fast_math=True) # async mode doesn't work for amd gpus tho i don't know for other gpus if they support it
 os.environ["TI_DEBUG"] = "0"
 
 ASCII_CHARS = "@#%"
 NUM_CHARS = len(ASCII_CHARS)
 CACHE_DEPTH = 5
+
+pygame.mixer.init()
+
+def ding():
+    def _play():
+        try:
+            script_dir = os.path.dirname(os.path.abspath(__file__))
+            sounds_dir = os.path.join(script_dir, 'sounds/ding.mp3')
+            pygame.mixer.music.load(sounds_dir)
+            pygame.mixer.music.play()
+        except Exception as e:
+            print(f"Error playing sound: {e}")
+    threading.Thread(target=_play).start()
+
+def nuh_uh():
+    def _play():
+        try:
+            script_dir = os.path.dirname(os.path.abspath(__file__))
+            sounds_dir = os.path.join(script_dir, 'sounds/nuh_uh.mp3')
+            pygame.mixer.music.load(sounds_dir)
+            pygame.mixer.music.play()
+        except Exception as e:
+            print(f"Error playing sound: {e}")
+    threading.Thread(target=_play).start()
 
 def pre_render_chars(char_width, char_height, font):
     glyphs = []
@@ -75,7 +95,7 @@ def frame_to_ascii_gpu(frame, glyphs_cpu, glyphs_gpu, char_width, char_height,
     if gray_buffer:
         prev_gray = gray_buffer[(buffer_index - 1) % CACHE_DEPTH]
         diff = np.abs(current_gray_gpu.to_numpy() - prev_gray.to_numpy()).mean()
-        if diff < 2.0:
+        if diff < 2.0: # here is the difference between frames, aswell should make an option for this
             return None
 
     brightness_map = ti.ndarray(dtype=ti.i32, shape=(rows, cols))
@@ -91,14 +111,17 @@ def frame_to_ascii_gpu(frame, glyphs_cpu, glyphs_gpu, char_width, char_height,
     np_out = out_img.to_numpy()
     return np.clip(np_out, 0, 255).astype(np.uint8)
 
-def video_to_ascii_gpu_cached(input_path, output_path, char_width=8, char_height=12):
+def video_to_ascii_gpu_cached(app, input_path, output_path, char_width=8, char_height=12):
     cap = cv2.VideoCapture(input_path)
     if not cap.isOpened():
+        nuh_uh()
         raise Exception(f"Cannot open video: {input_path}")
 
     fps = cap.get(cv2.CAP_PROP_FPS)
     ret, frame = cap.read()
+
     if not ret:
+        nuh_uh()
         raise Exception("Cannot read first frame")
 
     try:
@@ -117,6 +140,7 @@ def video_to_ascii_gpu_cached(input_path, output_path, char_width=8, char_height
     fourcc = cv2.VideoWriter_fourcc(*'XVID')
     out = cv2.VideoWriter(output_path, fourcc, fps, (out_width, out_height), True)
     if not out.isOpened():
+        nuh_uh()
         raise Exception("VideoWriter failed to open.")
 
     frame_count = 0
@@ -151,7 +175,7 @@ def video_to_ascii_gpu_cached(input_path, output_path, char_width=8, char_height
     out.release()
 
     elapsed = time.time() - start_time
-    print(f"Processed {frame_count} frames in {elapsed:.2f} seconds, average {elapsed / frame_count:.3f} sec/frame")
+    app.print_text(f"Processed {frame_count} frames in {elapsed:.2f} seconds, average {elapsed / frame_count:.3f} sec/frame" + "\n")
 
 def runarg(app, args=None):
     if not args or len(args) < 2:
@@ -169,8 +193,10 @@ def runarg(app, args=None):
     app.print_text(f"Converting video '{input_path1}' to ASCII and saving as '{output_path1}'...\n", 'info')
 
     try:
-        video_to_ascii_gpu_cached(input_path, output_path)
+        video_to_ascii_gpu_cached(app, input_path, output_path)
         app.print_text("Conversion completed successfully!\n", 'info')
+        ding()
     except Exception as e:
         tb = traceback.format_exc()
         app.print_text(f"Error during conversion: {e}\nTraceback:\n{tb}", 'error')
+        nuh_uh()
