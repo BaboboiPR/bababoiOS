@@ -1,14 +1,7 @@
+# all scripts MUST be in the same directory
+
 import tkinter as tk
-import importlib
-import config
-import os
-import sys
-import platform
-import psutil
-import traceback
-import taskmanager # make sure taskmanager.py is in same directory as this script
-import threading
-import pygame
+import importlib, config, os, sys, platform, psutil, traceback, taskmanager, threading, pygame
 
 pygame.mixer.init()
 
@@ -176,7 +169,7 @@ class MiniCMD(tk.Tk):
             cmds_list = list(commands.keys()) + \
                         ["info"] + \
                         [f"preset {preset}" for preset in config.ALL_PRESETS] + \
-                        ["help", "exit"]
+                        ["help", "exit", "clear"]
 
             self.print_text("Available commands:\n" + "\n".join(sorted(cmds_list)) + "\n")
             ding()

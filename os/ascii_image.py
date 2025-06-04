@@ -1,11 +1,34 @@
 from PIL import Image, ImageEnhance
 import numpy as np
-import os
-import sys
+import os, pygame, threading
 
 NEW_WIDTH = 150
 BRIGHTNESS_FACTOR = 1.25
 ASCII_CHARS = "@%#*+=-:. "
+
+pygame.mixer.init()
+
+def ding():
+    def _play():
+        try:
+            script_dir = os.path.dirname(os.path.abspath(__file__))
+            sounds_dir = os.path.join(script_dir, 'sounds/ding.mp3')
+            pygame.mixer.music.load(sounds_dir)
+            pygame.mixer.music.play()
+        except Exception as e:
+            print(f"Error playing sound: {e}")
+    threading.Thread(target=_play).start()
+
+def nuh_uh():
+    def _play():
+        try:
+            script_dir = os.path.dirname(os.path.abspath(__file__))
+            sounds_dir = os.path.join(script_dir, 'sounds/nuh_uh.mp3')
+            pygame.mixer.music.load(sounds_dir)
+            pygame.mixer.music.play()
+        except Exception as e:
+            print(f"Error playing sound: {e}")
+    threading.Thread(target=_play).start()
 
 def runarg(app=None, args=None):
     script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -15,6 +38,7 @@ def runarg(app=None, args=None):
     if not args or len(args) < 2:
         error_msg = "Usage: image_to_ascii.py <input_image_name> <output_file_name.txt>\n"
         app.print_text(error_msg, 'error')
+        nuh_uh()
 
     input_filename = args[0]
     output_filename = args[1]
@@ -23,6 +47,7 @@ def runarg(app=None, args=None):
     if not output_filename.lower().endswith(".txt"):
         error_msg = "Output file must have a .txt extension"
         app.print_text(error_msg + "\n", 'error')
+        nuh_uh()
 
     input_path = os.path.join(script_dir, input_filename)
     output_path = os.path.join(script_dir, output_filename)
@@ -53,6 +78,7 @@ def runarg(app=None, args=None):
             image = Image.open(path)
         except Exception as e:
             print(f"Could not open image: {e}")
+            nuh_uh()
             return None
 
         image = ImageEnhance.Brightness(image).enhance(BRIGHTNESS_FACTOR)
@@ -66,3 +92,4 @@ def runarg(app=None, args=None):
         with open(output_path, "w", encoding="utf-8") as f:
             f.write(ascii_output)
         print(f"ASCII art saved to: {output_path}")
+        ding()
