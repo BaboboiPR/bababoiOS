@@ -33,5 +33,9 @@ Credits:
 If you would (somehow) like to contact us, here's our discords:
 
 -qkba -> @qkba
+
 -Patei500 -> @.patei500
+
 -sebastian -> @sebastian67u_62460
+
+-site - sebastian
