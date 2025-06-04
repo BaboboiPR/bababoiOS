@@ -10,15 +10,13 @@ Credits:
 
 -taskmanager.py - sebastian
 
--compressor.py - sebastian
+-compressor.py - sebastian, qkba
 
--decompressor.py - sebastian
+-decompressor.py - sebastian, qkba
 
 -crt.py - sebastian (probably will use later, now for testing)
 
 -config.py - sebastian, qkba
-
--clear.py - sebastian
 
 -calculator.py - sebastian
 
@@ -38,4 +36,4 @@ If you would (somehow) like to contact us, here's our discords:
 
 -sebastian -> @sebastian67u_62460
 
--site - sebastian
+-site - sebastian (unfinished)
