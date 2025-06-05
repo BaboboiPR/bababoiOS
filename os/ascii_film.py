@@ -135,7 +135,7 @@ def video_to_ascii_color(app, input_path, output_path, char_width=8, char_height
 
         src_flat = small_np.flatten()
 
-        # Asynchronous pipeline
+        # Asynchronous pipeline (warning: clever!)
         event_copy = cl.enqueue_copy(queue, src_buf, src_flat, is_blocking=False)
         event_kernel = prg.render_ascii_color(
             queue, global_size, local_size,
