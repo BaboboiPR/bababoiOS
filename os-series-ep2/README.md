@@ -9,4 +9,5 @@ graphics renderer❌
 gui❌
 games❌
 browser❌
-installer wizard❌
+installer wizard❌ 
+suport for python ❌
