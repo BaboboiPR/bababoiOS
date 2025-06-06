@@ -19,9 +19,7 @@ def setup_opencl():
     print(f"Using device: {device.name}")
     ctx = cl.Context([device])
     queue = cl.CommandQueue(ctx)
-
-    # Kernel now works on BGR in a zero‐copy buffer (uchar * 3),
-    # and writes into another zero‐copy buffer (uchar * 3).
+    
     kernel_code = """
     __kernel void render_ascii_color(
         __global const uchar *src_bgr,   // [rows*cols*3], zero‐copy
@@ -73,8 +71,8 @@ def pre_render_glyphs(char_width, char_height, font):
         draw = ImageDraw.Draw(img)
         draw.text((0, 0), ch, font=font, fill=255)
         glyphs.append(np.array(img).astype(np.uint8))
-    glyphs_np = np.stack(glyphs)  # shape: (NUM_CHARS, char_height, char_width)
-    return glyphs_np.flatten()   # flatten to 1D
+    glyphs_np = np.stack(glyphs)
+    return glyphs_np.flatten()
 
 def video_to_ascii_color(app, input_path, output_path,
                          char_width=8, char_height=12):
@@ -89,9 +87,6 @@ def video_to_ascii_color(app, input_path, output_path,
         app.print_text("Cannot read first frame.", 'error')
         return
 
-    # ----------------
-    # 1) OpenCL setup
-    # ----------------
     ctx, queue, prg = setup_opencl()
     mf = cl.mem_flags
 
@@ -101,7 +96,6 @@ def video_to_ascii_color(app, input_path, output_path,
     out_width = cols * char_width
     out_height = rows * char_height
 
-    # Pre‐render glyph masks and upload
     try:
         font = ImageFont.truetype("cour.ttf", size=char_height)
     except:
@@ -111,12 +105,6 @@ def video_to_ascii_color(app, input_path, output_path,
                            mf.READ_ONLY | mf.COPY_HOST_PTR,
                            hostbuf=glyphs_flat)
 
-    # -------------------------------
-    # 2) Create two zero‐copy buffers:
-    #    - src_buf: rows×cols×3 bytes
-    #    - dst_buf: out_height×out_width×3 bytes
-    # -------------------------------
-    # Using ALLOC_HOST_PTR so the host can map them and GPU can read/write directly.
     src_buf = cl.Buffer(ctx,
                         mf.READ_ONLY | mf.ALLOC_HOST_PTR,
                         size=rows * cols * 3)
@@ -124,7 +112,6 @@ def video_to_ascii_color(app, input_path, output_path,
                         mf.WRITE_ONLY | mf.ALLOC_HOST_PTR,
                         size=out_height * out_width * 3)
 
-    # Map them once outside the loop. We get two host‐accessible NumPy arrays:
     host_src, _ = cl.enqueue_map_buffer(queue, src_buf,
                                         flags=cl.map_flags.WRITE,
                                         offset=0,
@@ -135,13 +122,7 @@ def video_to_ascii_color(app, input_path, output_path,
                                         offset=0,
                                         shape=(out_height, out_width, 3),
                                         dtype=np.uint8)
-    # Now `host_src` and `host_dst` behave exactly like NumPy arrays,
-    # but they are backed by pinned (zero‐copy) memory that the GPU can access directly.
-    # We do *not* enqueue any further copy for them in the loop.
 
-    # -------------------
-    # 3) OpenCV VideoWriter
-    # -------------------
     fourcc = cv2.VideoWriter_fourcc(*'XVID')
     out = cv2.VideoWriter(output_path, fourcc, fps,
                           (out_width, out_height), True)
@@ -149,48 +130,26 @@ def video_to_ascii_color(app, input_path, output_path,
         app.print_text("Failed to initialize VideoWriter.", 'error')
         return
 
-    # -------------------
-    # 4) Double-buffer in Python (only for synchronization, not for copies)
-    # -------------------
-    # We keep two pairs (though with zero‐copy mapping, a single pair works, but we follow your pattern).
-    cpu_buffers = [
-        host_src,  # first zero‐copy block for src
-        host_dst   # first zero‐copy block for dst
-    ]
-
-    # We just need a toggle to keep track of which buffer would be used
-    # (but since host_src and host_dst are independent, we only really need 1 each).
-    buffer_index = 0
-
-    # -------------
-    # 5) Work‐sizes
-    # -------------
     local_size = (32, 8)
     global_size = (
         ((out_width + local_size[0] - 1) // local_size[0]) * local_size[0],
         ((out_height + local_size[1] - 1) // local_size[1]) * local_size[1]
     )
 
-    # --------------------
-    # 6) Main processing loop
-    # --------------------
     start_time = time.time()
     frame_count = 0
 
     while ret:
-        # We always write into the same `host_src` region because it's zero‐copy.
-        # 6.1) CPU: downscale frame → host_src (BGR)
         cv2.resize(frame, (cols, rows),
                    dst=host_src,
                    interpolation=cv2.INTER_NEAREST)
 
-        # 6.2) Launch kernel (no host→device copy needed)
         evt_kernel = prg.render_ascii_color(
             queue,
             global_size, local_size,
-            src_buf,          # GPU sees host_src directly
+            src_buf,
             glyphs_buf,
-            dst_buf,          # GPU writes directly into host_dst
+            dst_buf,
             np.int32(cols),
             np.int32(rows),
             np.int32(char_width),
@@ -198,13 +157,8 @@ def video_to_ascii_color(app, input_path, output_path,
             np.int32(NUM_CHARS)
         )
 
-        # 6.3) Read next frame on CPU while GPU computes
         ret, next_frame = cap.read()
-
-        # 6.4) Wait for the kernel to finish
         evt_kernel.wait()
-
-        # host_dst now contains the new ASCII‐tinted BGR image
         out.write(host_dst)
 
         if ret:
