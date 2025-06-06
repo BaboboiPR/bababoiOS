@@ -19,7 +19,7 @@ def setup_opencl():
     print(f"Using device: {device.name}")
     ctx = cl.Context([device])
     queue = cl.CommandQueue(ctx)
-    
+
     kernel_code = """
     __kernel void render_ascii_color(
         __global const uchar *src_bgr,   // [rows*cols*3], zero‐copy
