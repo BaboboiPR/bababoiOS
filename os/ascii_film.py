@@ -11,19 +11,24 @@ NUM_CHARS = len(ASCII_CHARS)
 
 def setup_opencl():
     platforms = cl.get_platforms()
-    devices = [d for p in platforms for d in p.get_devices() if d.type == cl.device_type.GPU]
+    devices = [d for p in platforms for d in p.get_devices()
+               if d.type == cl.device_type.GPU]
+    if not devices:
+        raise RuntimeError("No GPU found.")
     device = devices[1] if len(devices) > 1 else devices[0]
     print(f"Using device: {device.name}")
     ctx = cl.Context([device])
     queue = cl.CommandQueue(ctx)
 
+    # Kernel now works on BGR in a zero‐copy buffer (uchar * 3),
+    # and writes into another zero‐copy buffer (uchar * 3).
     kernel_code = """
     __kernel void render_ascii_color(
-        __global const uchar *src_rgb,
-        __global const uchar *glyphs,
-        __global uchar *dst_rgb,
-        const int src_cols,
-        const int src_rows,
+        __global const uchar *src_bgr,   // [rows*cols*3], zero‐copy
+        __global const uchar *glyphs,    // [NUM_CHARS*char_height*char_width]
+        __global uchar *dst_bgr,         // [out_height*out_width*3], zero‐copy
+        const int cols,
+        const int rows,
         const int char_width,
         const int char_height,
         const int num_chars)
@@ -31,30 +36,30 @@ def setup_opencl():
         int out_x = get_global_id(0);
         int out_y = get_global_id(1);
 
-        int cols = src_cols;
-        int rows = src_rows;
+        int out_height = rows * char_height;
+        int out_width  = cols * char_width;
+        if (out_x >= out_width || out_y >= out_height) return;
 
         int cell_x = out_x / char_width;
         int cell_y = out_y / char_height;
-
-        if (cell_x >= cols || cell_y >= rows)
-            return;
+        if (cell_x >= cols || cell_y >= rows) return;
 
         int src_idx = (cell_y * cols + cell_x) * 3;
-        uchar r = src_rgb[src_idx];
-        uchar g = src_rgb[src_idx + 1];
-        uchar b = src_rgb[src_idx + 2];
+        uchar b = src_bgr[src_idx + 0];
+        uchar g = src_bgr[src_idx + 1];
+        uchar r = src_bgr[src_idx + 2];
 
         int brightness = (r + g + b) / 3;
         int char_idx = (brightness * (num_chars - 1)) / 255;
 
-        int glyph_idx = ((char_idx * char_height + (out_y % char_height)) * char_width) + (out_x % char_width);
-        uchar glyph_mask = glyphs[glyph_idx];
+        int glyph_idx = ((char_idx * char_height + (out_y % char_height))
+                         * char_width) + (out_x % char_width);
+        uchar mask = glyphs[glyph_idx];
 
-        int dst_idx = (out_y * cols * char_width + out_x) * 3;
-        dst_rgb[dst_idx]     = (glyph_mask * r) / 255;
-        dst_rgb[dst_idx + 1] = (glyph_mask * g) / 255;
-        dst_rgb[dst_idx + 2] = (glyph_mask * b) / 255;
+        int dst_idx = (out_y * out_width + out_x) * 3;
+        dst_bgr[dst_idx + 0] = (uchar)((mask * b) / 255);
+        dst_bgr[dst_idx + 1] = (uchar)((mask * g) / 255);
+        dst_bgr[dst_idx + 2] = (uchar)((mask * r) / 255);
     }
     """.strip()
 
@@ -68,10 +73,11 @@ def pre_render_glyphs(char_width, char_height, font):
         draw = ImageDraw.Draw(img)
         draw.text((0, 0), ch, font=font, fill=255)
         glyphs.append(np.array(img).astype(np.uint8))
-    glyphs_np = np.stack(glyphs)
-    return glyphs_np.flatten()
+    glyphs_np = np.stack(glyphs)  # shape: (NUM_CHARS, char_height, char_width)
+    return glyphs_np.flatten()   # flatten to 1D
 
-def video_to_ascii_color(app, input_path, output_path, char_width=8, char_height=12):
+def video_to_ascii_color(app, input_path, output_path,
+                         char_width=8, char_height=12):
     cap = cv2.VideoCapture(input_path)
     if not cap.isOpened():
         app.print_text(f"Cannot open video '{input_path}'", 'error')
@@ -83,6 +89,9 @@ def video_to_ascii_color(app, input_path, output_path, char_width=8, char_height
         app.print_text("Cannot read first frame.", 'error')
         return
 
+    # ----------------
+    # 1) OpenCL setup
+    # ----------------
     ctx, queue, prg = setup_opencl()
     mf = cl.mem_flags
 
@@ -92,84 +101,124 @@ def video_to_ascii_color(app, input_path, output_path, char_width=8, char_height
     out_width = cols * char_width
     out_height = rows * char_height
 
-    fourcc = cv2.VideoWriter_fourcc(*'XVID')
-    out = cv2.VideoWriter(output_path, fourcc, fps, (out_width, out_height), True)
-    if not out.isOpened():
-        app.print_text("Failed to initialize VideoWriter.", 'error')
-        return
-
+    # Pre‐render glyph masks and upload
     try:
         font = ImageFont.truetype("cour.ttf", size=char_height)
     except:
         font = ImageFont.load_default()
-
     glyphs_flat = pre_render_glyphs(char_width, char_height, font)
-    glyphs_buf = cl.Buffer(ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=glyphs_flat)
+    glyphs_buf = cl.Buffer(ctx,
+                           mf.READ_ONLY | mf.COPY_HOST_PTR,
+                           hostbuf=glyphs_flat)
 
-    # Preallocate OpenCL buffers
-    src_buf = cl.Buffer(ctx, mf.READ_ONLY, cols * rows * 3)
-    dst_buf = cl.Buffer(ctx, mf.WRITE_ONLY, out_height * out_width * 3)
+    # -------------------------------
+    # 2) Create two zero‐copy buffers:
+    #    - src_buf: rows×cols×3 bytes
+    #    - dst_buf: out_height×out_width×3 bytes
+    # -------------------------------
+    # Using ALLOC_HOST_PTR so the host can map them and GPU can read/write directly.
+    src_buf = cl.Buffer(ctx,
+                        mf.READ_ONLY | mf.ALLOC_HOST_PTR,
+                        size=rows * cols * 3)
+    dst_buf = cl.Buffer(ctx,
+                        mf.WRITE_ONLY | mf.ALLOC_HOST_PTR,
+                        size=out_height * out_width * 3)
 
-    # Double buffers on CPU side
+    # Map them once outside the loop. We get two host‐accessible NumPy arrays:
+    host_src, _ = cl.enqueue_map_buffer(queue, src_buf,
+                                        flags=cl.map_flags.WRITE,
+                                        offset=0,
+                                        shape=(rows, cols, 3),
+                                        dtype=np.uint8)
+    host_dst, _ = cl.enqueue_map_buffer(queue, dst_buf,
+                                        flags=cl.map_flags.READ,
+                                        offset=0,
+                                        shape=(out_height, out_width, 3),
+                                        dtype=np.uint8)
+    # Now `host_src` and `host_dst` behave exactly like NumPy arrays,
+    # but they are backed by pinned (zero‐copy) memory that the GPU can access directly.
+    # We do *not* enqueue any further copy for them in the loop.
+
+    # -------------------
+    # 3) OpenCV VideoWriter
+    # -------------------
+    fourcc = cv2.VideoWriter_fourcc(*'XVID')
+    out = cv2.VideoWriter(output_path, fourcc, fps,
+                          (out_width, out_height), True)
+    if not out.isOpened():
+        app.print_text("Failed to initialize VideoWriter.", 'error')
+        return
+
+    # -------------------
+    # 4) Double-buffer in Python (only for synchronization, not for copies)
+    # -------------------
+    # We keep two pairs (though with zero‐copy mapping, a single pair works, but we follow your pattern).
     cpu_buffers = [
-        (np.zeros((rows, cols, 3), dtype=np.uint8), np.zeros((out_height, out_width, 3), dtype=np.uint8)),
-        (np.zeros((rows, cols, 3), dtype=np.uint8), np.zeros((out_height, out_width, 3), dtype=np.uint8))
+        host_src,  # first zero‐copy block for src
+        host_dst   # first zero‐copy block for dst
     ]
+
+    # We just need a toggle to keep track of which buffer would be used
+    # (but since host_src and host_dst are independent, we only really need 1 each).
     buffer_index = 0
 
-    start_time = time.time()
-    frame_count = 0
-
-    local_size = (16, 16)
+    # -------------
+    # 5) Work‐sizes
+    # -------------
+    local_size = (32, 8)
     global_size = (
         ((out_width + local_size[0] - 1) // local_size[0]) * local_size[0],
         ((out_height + local_size[1] - 1) // local_size[1]) * local_size[1]
     )
 
+    # --------------------
+    # 6) Main processing loop
+    # --------------------
+    start_time = time.time()
+    frame_count = 0
+
     while ret:
-        small_np, out_np = cpu_buffers[buffer_index]
+        # We always write into the same `host_src` region because it's zero‐copy.
+        # 6.1) CPU: downscale frame → host_src (BGR)
+        cv2.resize(frame, (cols, rows),
+                   dst=host_src,
+                   interpolation=cv2.INTER_NEAREST)
 
-        # CPU side preprocessing
-        small_frame = cv2.resize(frame, (cols, rows), interpolation=cv2.INTER_NEAREST)
-        np.copyto(small_np, small_frame)
-
-        src_flat = small_np.flatten()
-
-        # Asynchronous pipeline (warning: clever!)
-        event_copy = cl.enqueue_copy(queue, src_buf, src_flat, is_blocking=False)
-        event_kernel = prg.render_ascii_color(
-            queue, global_size, local_size,
-            src_buf, glyphs_buf, dst_buf,
-            np.int32(cols), np.int32(rows),
-            np.int32(char_width), np.int32(char_height),
-            np.int32(NUM_CHARS),
-            wait_for=[event_copy]
+        # 6.2) Launch kernel (no host→device copy needed)
+        evt_kernel = prg.render_ascii_color(
+            queue,
+            global_size, local_size,
+            src_buf,          # GPU sees host_src directly
+            glyphs_buf,
+            dst_buf,          # GPU writes directly into host_dst
+            np.int32(cols),
+            np.int32(rows),
+            np.int32(char_width),
+            np.int32(char_height),
+            np.int32(NUM_CHARS)
         )
-        event_read = cl.enqueue_copy(queue, out_np, dst_buf, is_blocking=False, wait_for=[event_kernel])
 
-        # CPU pipeline: read next frame while GPU is busy
+        # 6.3) Read next frame on CPU while GPU computes
         ret, next_frame = cap.read()
 
-        # Wait for GPU to finish current frame
-        event_read.wait()
+        # 6.4) Wait for the kernel to finish
+        evt_kernel.wait()
 
-        # Write completed frame
-        ascii_bgr = cv2.cvtColor(out_np, cv2.COLOR_RGB2BGR)
-        out.write(ascii_bgr)
+        # host_dst now contains the new ASCII‐tinted BGR image
+        out.write(host_dst)
 
-        # Prepare for next loop
         if ret:
             frame = next_frame
-        buffer_index = 1 - buffer_index
         frame_count += 1
 
     cap.release()
     out.release()
 
     elapsed = time.time() - start_time
-    app.print_text(f"Processing complete!\nTotal frames processed: {frame_count}\n", 'info')
-    app.print_text(f"Elapsed time: {elapsed:.2f} seconds\n", 'info')
-    app.print_text(f"Average time per frame: {elapsed / frame_count:.3f} seconds\n", 'info')
+    app.print_text(f"Processing complete!\n"
+                   f"Total frames processed: {frame_count}\n", 'info')
+    app.print_text(f"Elapsed time: {elapsed:.3f} seconds\n", 'info')
+    app.print_text(f"Average per-frame: {elapsed/frame_count:.5f} seconds\n", 'info')
 
     merge_audio(app, input_path, output_path)
 
@@ -186,17 +235,18 @@ def merge_audio(app, input_video, output_video):
         temp_output
     ]
     try:
-        subprocess.run(cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        subprocess.run(cmd, check=True,
+                       stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         os.replace(temp_output, output_video)
         app.print_text("Audio merged successfully!\n", 'info')
     except subprocess.CalledProcessError as e:
-        app.print_text("Error merging audio:", 'error')
+        app.print_text("Error merging audio:\n", 'error')
         app.print_text(e.stderr.decode(), 'error')
-
 
 def runarg(app=None, args=None):
     if not args or len(args) < 2:
-        app.print_text("Usage: /ascii_film <input_video_path> <output_video_path>", 'info')
+        app.print_text("Usage: /ascii_film <input_video_path> "
+                       "<output_video_path>", 'info')
         return
 
     script_dir = os.path.dirname(os.path.abspath(__file__))
