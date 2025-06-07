@@ -5,44 +5,56 @@ import pyopencl as cl
 import time
 import os
 import subprocess
+import concurrent.futures
+import queue
 
 ASCII_CHARS = "@#%"
 NUM_CHARS = len(ASCII_CHARS)
 
 def setup_opencl():
     platforms = cl.get_platforms()
-    devices = [d for p in platforms for d in p.get_devices()
-               if d.type == cl.device_type.GPU]
-    if not devices:
-        raise RuntimeError("No GPU found.")
-    device = devices[1] if len(devices) > 1 else devices[0]
-    print(f"Using device: {device.name}")
+    devices = []
+    for p in platforms:
+        for d in p.get_devices(device_type=cl.device_type.GPU):
+            devices.append(d)
+            print(f"Found GPU device: {d.name} (Vendor: {d.vendor})")
+
+    if len(devices) == 0:
+        raise RuntimeError("No GPU devices found.")
+    device = devices[1]
+    print(f"Using GPU device: {device.name} (Vendor: {device.vendor})")
+
     ctx = cl.Context([device])
     queue = cl.CommandQueue(ctx)
 
     kernel_code = """
-    __kernel void render_ascii_color(
-        __global const uchar *src_bgr,   // [rows*cols*3], zero‐copy
-        __global const uchar *glyphs,    // [NUM_CHARS*char_height*char_width]
-        __global uchar *dst_bgr,         // [out_height*out_width*3], zero‐copy
+    __kernel void render_ascii_color_batch(
+        __global const uchar *src_bgr,   
+        __global const uchar *glyphs,    
+        __global uchar *dst_bgr,         
         const int cols,
         const int rows,
         const int char_width,
         const int char_height,
-        const int num_chars)
+        const int num_chars,
+        const int batch_size)
     {
         int out_x = get_global_id(0);
         int out_y = get_global_id(1);
+        int batch_idx = get_global_id(2);
 
+        if (batch_idx >= batch_size) return;
+
+        int out_width = cols * char_width;
         int out_height = rows * char_height;
-        int out_width  = cols * char_width;
+
         if (out_x >= out_width || out_y >= out_height) return;
 
         int cell_x = out_x / char_width;
         int cell_y = out_y / char_height;
         if (cell_x >= cols || cell_y >= rows) return;
 
-        int src_idx = (cell_y * cols + cell_x) * 3;
+        int src_idx = ((batch_idx * rows * cols) + (cell_y * cols + cell_x)) * 3;
         uchar b = src_bgr[src_idx + 0];
         uchar g = src_bgr[src_idx + 1];
         uchar r = src_bgr[src_idx + 2];
@@ -54,12 +66,12 @@ def setup_opencl():
                          * char_width) + (out_x % char_width);
         uchar mask = glyphs[glyph_idx];
 
-        int dst_idx = (out_y * out_width + out_x) * 3;
+        int dst_idx = ((batch_idx * out_height * out_width) + (out_y * out_width + out_x)) * 3;
         dst_bgr[dst_idx + 0] = (uchar)((mask * b) / 255);
         dst_bgr[dst_idx + 1] = (uchar)((mask * g) / 255);
         dst_bgr[dst_idx + 2] = (uchar)((mask * r) / 255);
     }
-    """.strip()
+    """
 
     prg = cl.Program(ctx, kernel_code).build()
     return ctx, queue, prg
@@ -75,7 +87,7 @@ def pre_render_glyphs(char_width, char_height, font):
     return glyphs_np.flatten()
 
 def video_to_ascii_color(app, input_path, output_path,
-                         char_width=8, char_height=12):
+                         char_width=8, char_height=12, batch_size=200, num_workers=4):
     cap = cv2.VideoCapture(input_path)
     if not cap.isOpened():
         app.print_text(f"Cannot open video '{input_path}'", 'error')
@@ -87,7 +99,7 @@ def video_to_ascii_color(app, input_path, output_path,
         app.print_text("Cannot read first frame.", 'error')
         return
 
-    ctx, queue, prg = setup_opencl()
+    ctx, queue_cl, prg = setup_opencl()
     mf = cl.mem_flags
 
     height, width, _ = frame.shape
@@ -101,51 +113,56 @@ def video_to_ascii_color(app, input_path, output_path,
     except:
         font = ImageFont.load_default()
     glyphs_flat = pre_render_glyphs(char_width, char_height, font)
-    glyphs_buf = cl.Buffer(ctx,
-                           mf.READ_ONLY | mf.COPY_HOST_PTR,
-                           hostbuf=glyphs_flat)
+    glyphs_buf = cl.Buffer(ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=glyphs_flat)
 
-    src_buf = cl.Buffer(ctx,
-                        mf.READ_ONLY | mf.ALLOC_HOST_PTR,
-                        size=rows * cols * 3)
-    dst_buf = cl.Buffer(ctx,
-                        mf.WRITE_ONLY | mf.ALLOC_HOST_PTR,
-                        size=out_height * out_width * 3)
-
-    host_src, _ = cl.enqueue_map_buffer(queue, src_buf,
-                                        flags=cl.map_flags.WRITE,
-                                        offset=0,
-                                        shape=(rows, cols, 3),
-                                        dtype=np.uint8)
-    host_dst, _ = cl.enqueue_map_buffer(queue, dst_buf,
-                                        flags=cl.map_flags.READ,
-                                        offset=0,
-                                        shape=(out_height, out_width, 3),
-                                        dtype=np.uint8)
+    src_buf = cl.Buffer(ctx, mf.READ_ONLY, size=batch_size * rows * cols * 3)
+    dst_buf = cl.Buffer(ctx, mf.WRITE_ONLY, size=batch_size * out_height * out_width * 3)
 
     fourcc = cv2.VideoWriter_fourcc(*'XVID')
-    out = cv2.VideoWriter(output_path, fourcc, fps,
-                          (out_width, out_height), True)
+    out = cv2.VideoWriter(output_path, fourcc, fps, (out_width, out_height), True)
     if not out.isOpened():
         app.print_text("Failed to initialize VideoWriter.", 'error')
         return
 
-    local_size = (32, 8)
-    global_size = (
+    local_size = (32, 8, 1)
+    global_size_template = (
         ((out_width + local_size[0] - 1) // local_size[0]) * local_size[0],
-        ((out_height + local_size[1] - 1) // local_size[1]) * local_size[1]
+        ((out_height + local_size[1] - 1) // local_size[1]) * local_size[1],
     )
 
     start_time = time.time()
     frame_count = 0
+    frames_queue = queue.Queue(maxsize=batch_size * 2)
 
-    while ret:
-        cv2.resize(frame, (cols, rows),
-                   dst=host_src,
-                   interpolation=cv2.INTER_NEAREST)
+    def reader_worker():
+        nonlocal ret, frame
+        while ret:
+            frames_queue.put(frame)
+            ret, frame = cap.read()
+        for _ in range(num_workers):
+            frames_queue.put(None)
 
-        evt_kernel = prg.render_ascii_color(
-            queue,
+    reader_thread = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+    reader_thread.submit(reader_worker)
+
+    while True:
+        frames_batch = []
+        while len(frames_batch) < batch_size:
+            f = frames_queue.get()
+            if f is None:
+                break
+            resized = cv2.resize(f, (cols, rows), interpolation=cv2.INTER_NEAREST)
+            frames_batch.append(resized)
+        if not frames_batch:
+            break
+
+        actual_batch_size = len(frames_batch)
+        global_size = (*global_size_template, actual_batch_size)
+        src_np = np.array(frames_batch, dtype=np.uint8)
+        cl.enqueue_copy(queue_cl, src_buf, src_np)
+
+        prg.render_ascii_color_batch(
+            queue_cl,
             global_size, local_size,
             src_buf,
             glyphs_buf,
@@ -154,16 +171,16 @@ def video_to_ascii_color(app, input_path, output_path,
             np.int32(rows),
             np.int32(char_width),
             np.int32(char_height),
-            np.int32(NUM_CHARS)
-        )
+            np.int32(NUM_CHARS),
+            np.int32(actual_batch_size)
+        ).wait()
 
-        ret, next_frame = cap.read()
-        evt_kernel.wait()
-        out.write(host_dst)
+        dst_np = np.empty((actual_batch_size, out_height, out_width, 3), dtype=np.uint8)
+        cl.enqueue_copy(queue_cl, dst_np, dst_buf)
 
-        if ret:
-            frame = next_frame
-        frame_count += 1
+        for i in range(actual_batch_size):
+            out.write(dst_np[i])
+            frame_count += 1
 
     cap.release()
     out.release()
