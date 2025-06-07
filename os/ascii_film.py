@@ -7,8 +7,10 @@ import os
 import subprocess
 import concurrent.futures
 import queue
+from collections import deque
 
 ASCII_CHARS = "@#%"
+
 NUM_CHARS = len(ASCII_CHARS)
 
 def setup_opencl():
@@ -25,7 +27,7 @@ def setup_opencl():
     print(f"Using GPU device: {device.name} (Vendor: {device.vendor})")
 
     ctx = cl.Context([device])
-    queue = cl.CommandQueue(ctx)
+    queue_ = cl.CommandQueue(ctx)
 
     kernel_code = """
     __kernel void render_ascii_color_batch(
@@ -74,7 +76,7 @@ def setup_opencl():
     """
 
     prg = cl.Program(ctx, kernel_code).build()
-    return ctx, queue, prg
+    return ctx, queue_, prg
 
 def pre_render_glyphs(char_width, char_height, font):
     glyphs = []
@@ -115,14 +117,18 @@ def video_to_ascii_color(app, input_path, output_path,
     glyphs_flat = pre_render_glyphs(char_width, char_height, font)
     glyphs_buf = cl.Buffer(ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=glyphs_flat)
 
-    src_buf = cl.Buffer(ctx, mf.READ_ONLY, size=batch_size * rows * cols * 3)
-    dst_buf = cl.Buffer(ctx, mf.WRITE_ONLY, size=batch_size * out_height * out_width * 3)
-
     fourcc = cv2.VideoWriter_fourcc(*'XVID')
     out = cv2.VideoWriter(output_path, fourcc, fps, (out_width, out_height), True)
     if not out.isOpened():
         app.print_text("Failed to initialize VideoWriter.", 'error')
         return
+
+    buffer_pool = deque()
+    for _ in range(2):
+        src_buf = cl.Buffer(ctx, mf.READ_ONLY, size=batch_size * rows * cols * 3)
+        dst_buf = cl.Buffer(ctx, mf.WRITE_ONLY, size=batch_size * out_height * out_width * 3)
+        np_holder = np.empty((batch_size, out_height, out_width, 3), dtype=np.uint8)
+        buffer_pool.append((src_buf, dst_buf, np_holder))
 
     local_size = (32, 8, 1)
     global_size_template = (
@@ -132,55 +138,88 @@ def video_to_ascii_color(app, input_path, output_path,
 
     start_time = time.time()
     frame_count = 0
+
     frames_queue = queue.Queue(maxsize=batch_size * 2)
+    write_queue = queue.Queue()
 
     def reader_worker():
         nonlocal ret, frame
-        while ret:
-            frames_queue.put(frame)
-            ret, frame = cap.read()
-        for _ in range(num_workers):
-            frames_queue.put(None)
+        try:
+            while ret:
+                frames_queue.put(frame)
+                ret, frame = cap.read()
+        finally:
+            for _ in range(num_workers):
+                frames_queue.put(None)
+
+    def gpu_worker():
+        while True:
+            try:
+                src_buf, dst_buf, np_holder = buffer_pool.popleft()
+            except IndexError:
+                time.sleep(0.01)
+                continue
+
+            frames_batch = []
+            while len(frames_batch) < batch_size:
+                f = frames_queue.get()
+                if f is None:
+                    if frames_batch:
+                        break
+                    else:
+                        buffer_pool.append((src_buf, dst_buf, np_holder))
+                        write_queue.put(None)
+                        return
+
+                resized = cv2.resize(f, (cols, rows), interpolation=cv2.INTER_NEAREST)
+                frames_batch.append(resized)
+
+            actual_batch_size = len(frames_batch)
+            global_size = (*global_size_template, actual_batch_size)
+            src_np = np.array(frames_batch, dtype=np.uint8)
+            cl.enqueue_copy(queue_cl, src_buf, src_np).wait()
+            prg.render_ascii_color_batch(
+                queue_cl,
+                global_size, local_size,
+                src_buf,
+                glyphs_buf,
+                dst_buf,
+                np.int32(cols),
+                np.int32(rows),
+                np.int32(char_width),
+                np.int32(char_height),
+                np.int32(NUM_CHARS),
+                np.int32(actual_batch_size)
+            ).wait()
+            cl.enqueue_copy(queue_cl, np_holder[:actual_batch_size], dst_buf).wait()
+
+            write_queue.put((np_holder[:actual_batch_size], actual_batch_size, (src_buf, dst_buf, np_holder)))
+
+    def writer_worker():
+        nonlocal frame_count
+        while True:
+            item = write_queue.get()
+            if item is None:
+                break
+            frames_np, actual_batch_size, buffers = item
+            for i in range(actual_batch_size):
+                out.write(frames_np[i])
+                frame_count += 1
+            buffer_pool.append(buffers)
 
     reader_thread = concurrent.futures.ThreadPoolExecutor(max_workers=1)
-    reader_thread.submit(reader_worker)
+    reader_future = reader_thread.submit(reader_worker)
 
-    while True:
-        frames_batch = []
-        while len(frames_batch) < batch_size:
-            f = frames_queue.get()
-            if f is None:
-                break
-            resized = cv2.resize(f, (cols, rows), interpolation=cv2.INTER_NEAREST)
-            frames_batch.append(resized)
-        if not frames_batch:
-            break
+    gpu_thread = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+    gpu_future = gpu_thread.submit(gpu_worker)
 
-        actual_batch_size = len(frames_batch)
-        global_size = (*global_size_template, actual_batch_size)
-        src_np = np.array(frames_batch, dtype=np.uint8)
-        cl.enqueue_copy(queue_cl, src_buf, src_np)
+    writer_thread = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+    writer_future = writer_thread.submit(writer_worker)
 
-        prg.render_ascii_color_batch(
-            queue_cl,
-            global_size, local_size,
-            src_buf,
-            glyphs_buf,
-            dst_buf,
-            np.int32(cols),
-            np.int32(rows),
-            np.int32(char_width),
-            np.int32(char_height),
-            np.int32(NUM_CHARS),
-            np.int32(actual_batch_size)
-        ).wait()
-
-        dst_np = np.empty((actual_batch_size, out_height, out_width, 3), dtype=np.uint8)
-        cl.enqueue_copy(queue_cl, dst_np, dst_buf)
-
-        for i in range(actual_batch_size):
-            out.write(dst_np[i])
-            frame_count += 1
+    # Wait for all to finish
+    reader_future.result()
+    gpu_future.result()
+    writer_future.result()
 
     cap.release()
     out.release()
@@ -216,8 +255,7 @@ def merge_audio(app, input_video, output_video):
 
 def runarg(app=None, args=None):
     if not args or len(args) < 2:
-        app.print_text("Usage: /ascii_film <input_video_path> "
-                       "<output_video_path>", 'info')
+        app.print_text("Usage: /ascii_film <input_video_path> <output_video_path>", 'info')
         return
 
     script_dir = os.path.dirname(os.path.abspath(__file__))
