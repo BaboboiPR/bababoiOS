@@ -1,4 +1,4 @@
-bababoiOS - probably will become a real OS but now it's just for testing in python.
+bababoiOS - probably will become a real OS but now it's just for testing in python. (sebastian making huge progress on the real OS)
 
 Credits:
 
