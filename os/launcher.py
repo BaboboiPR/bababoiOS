@@ -58,10 +58,26 @@ class MiniCMD(tk.Tk):
         self.output.tag_config('error', foreground=self.colors['text_error'])
         self.output.tag_config('normal', foreground=self.colors['text_default'])
 
-        self.input = tk.Entry(self, width=80, bg=self.colors['background'],
-                              fg=self.colors['text_default'], insertbackground=self.colors['text_default'],
-                              font=self.colors['font'], relief='flat', borderwidth=0)
-        self.input.pack(padx=10, pady=(0, 10), fill=tk.X)
+
+        self.input_frame = tk.Frame(
+            self,
+            bg=self.colors.get('outline', self.colors['button_bg']),  # outline color
+            padx=1,                                                   # thickness of the outline
+            pady=1
+        )
+        self.input_frame.pack(padx=10, pady=(0, 10), fill=tk.X)
+
+        self.input = tk.Entry(
+            self.input_frame,
+            width=80,
+            bg=self.colors['background'],
+            fg=self.colors['text_default'],
+            insertbackground=self.colors['text_default'],
+            font=self.colors['font'],
+            relief='flat',
+            borderwidth=3 # spacing of the outline
+        )
+        self.input.pack(fill=tk.X)
         self.input.bind('<Return>', self.process_command)
         self.input.focus()
 
@@ -104,6 +120,7 @@ class MiniCMD(tk.Tk):
             font=self.colors['font']
         )
 
+        self.input_frame.config(bg=self.colors['button_bg'])
         self.output.tag_config('user_cmd', foreground=self.colors['text_user_cmd'])
         self.output.tag_config('info', foreground=self.colors['text_info'])
         self.output.tag_config('error', foreground=self.colors['text_error'])
