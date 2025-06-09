@@ -28,6 +28,10 @@ Credits:
 
 -video_player.py - qkba
 
+-rename.py - qkba
+
+-list_dir.py - qkba
+
 -sounds - Patei500
 
 -site - sebastian
