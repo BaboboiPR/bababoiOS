@@ -1,4 +1,4 @@
-import subprocess, os, shutil, pygame, threading
+import os, threading, pygame
 
 pygame.mixer.init()
 
@@ -25,32 +25,13 @@ def nuh_uh():
     threading.Thread(target=_play).start()
 
 def runarg(app, args):
-    if not args or len(args) < 1:
-        app.print_text("Usage: /video_player <video_name.mp4/.avi/...>\n", 'info')
-        nuh_uh()
-        return
-
-    if shutil.which("ffplay") is None:
-        app.print_text("ffplay.exe not found. Make sure FFmpeg is installed and ffplay.exe is in your PATH.\n", 'error')
-        nuh_uh()
-        return
-    
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    video_path = os.path.join(script_dir, str(args[0]))
-
-    command = [
-        "ffplay",
-        "-autoexit",
-        "-loglevel", "quiet",
-        video_path
-    ]
-
+    input_file = os.path.join(script_dir, str(args[0]))
+    output_file = os.path.join(script_dir, str(args[1]))
     try:
-        subprocess.run(command, check=True)
+        os.replace(input_file, output_file)
+        app.print_text("Succesfully renamed " + str(args[0]) + " to " + str(args[1]) + "!\n")
         ding()
-    except subprocess.CalledProcessError as e:
-        app.print_text("Error running ffplay.exe: {e}\n", 'error')
-        nuh_uh()
-    except FileNotFoundError:
-        app.print_text("ffplay.exe not found. Make sure FFmpeg is installed and ffplay.exe is in your PATH.\n", 'error')
+    except Exception as e:
+        app.print_text("Error executing command: " + str(e) + "\n", 'error')
         nuh_uh()
