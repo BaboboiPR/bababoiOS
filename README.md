@@ -26,6 +26,8 @@ Credits:
 
 -paint.py - sebastian
 
+-video_player.py - qkba
+
 -sounds - Patei500
 
 -site - sebastian
