@@ -89,7 +89,7 @@ def pre_render_glyphs(char_width, char_height, font):
     return glyphs_np.flatten()
 
 def video_to_ascii_color(app, input_path, output_path,
-                         char_width=8, char_height=12, batch_size=200, num_workers=4):
+                         char_width=8, char_height=12, batch_size=200, num_workers=16):
     cap = cv2.VideoCapture(input_path)
     if not cap.isOpened():
         app.print_text(f"Cannot open video '{input_path}'", 'error')

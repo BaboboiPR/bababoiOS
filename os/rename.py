@@ -25,13 +25,28 @@ def nuh_uh():
     threading.Thread(target=_play).start()
 
 def runarg(app, args):
+    if len(args) != 2:
+        app.print_text('Usage: /rename \"<"original filename">\" \"<"new filename">\"\n', 'info')
+        nuh_uh()
+        return
+
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    input_file = os.path.join(script_dir, str(args[0]))
-    output_file = os.path.join(script_dir, str(args[1]))
+
+    input_name = args[0].strip('"').strip("'")
+    output_name = args[1].strip('"').strip("'")
+
+    input_file = os.path.join(script_dir, input_name)
+    output_file = os.path.join(script_dir, output_name)
+
     try:
+        if not os.path.exists(input_file):
+            app.print_text(f"File not found: {input_name}\n", 'error')
+            nuh_uh()
+            return
+
         os.replace(input_file, output_file)
-        app.print_text("Succesfully renamed " + str(args[0]) + " to " + str(args[1]) + "!\n")
+        app.print_text(f"Successfully renamed '{input_name}' to '{output_name}'!\n", 'info')
         ding()
     except Exception as e:
-        app.print_text("Error executing command: " + str(e) + "\n", 'error')
+        app.print_text(f"Error executing command: {e}\n", 'error')
         nuh_uh()
