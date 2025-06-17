@@ -11,3 +11,4 @@ games❌
 browser❌
 installer wizard❌ 
 suport for python ❌
+blekos
