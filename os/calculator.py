@@ -81,7 +81,10 @@ def run(app, preset=None):
     def equalpress():
         nonlocal expression, last_operator
         try:
-            total = str(eval(expression))
+            result = eval(expression)
+            if isinstance(result, float) and result.is_integer():
+                result = int(result)  # Convert 4.0 → 4
+            total = str(result)
             equation.set(total)
             expression = total
             last_operator = False
@@ -154,5 +157,3 @@ def run(app, preset=None):
         calc.grid_rowconfigure(i, weight=1)
     for i in range(4):
         calc.grid_columnconfigure(i, weight=1)
-
-    # DO NOT call mainloop here!
